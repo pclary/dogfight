@@ -93,8 +93,8 @@ package DogfightComponents
     
     PIController pControl_x ( Kp = 0.05, Ki = 0.003 );
     PIController pControl_y ( Kp = 0.05, Ki = 0.003 );
-    PIController vControl_x ( Kp = 0.5, Ki = 0.01 );
-    PIController vControl_y ( Kp = 0.5, Ki = 0.01 );
+    PIController vControl_x ( Kp = 0.1, Ki = 0.01 );
+    PIController vControl_y ( Kp = 0.1, Ki = 0.01 );
   
   equation
     velocity.x = der(position.x);
@@ -202,6 +202,10 @@ package DogfightComponents
     mass = tare + fuelLevel;
     fuelRate = -der(fuelLevel);
     
+    when fuelLevel < 0 then
+      reinit(fuelLevel, 0);
+    end when;
+    
   end FuelTank;
   
   
@@ -218,8 +222,8 @@ package DogfightComponents
     position.y = y;
     
   equation
-    der(position.x) = sin(time / 100) * 10;
-    der(position.y) = cos(time / 100) * 10;
+    der(position.x) = sin(time / 20) * 10;
+    der(position.y) = cos(time / 20) * 10;
     
   end Target;
   
