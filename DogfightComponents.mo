@@ -9,8 +9,6 @@ package DogfightComponents
     Real y;
   end VectorIO;
   
-  
-  
   record Vector
     Real x;
     Real y;
@@ -19,6 +17,9 @@ package DogfightComponents
   
   
   model Vehicle
+  
+    parameter Real x = 0;
+    parameter Real y = 0;
   
     RealIO mass;
     VectorIO position;
@@ -31,6 +32,12 @@ package DogfightComponents
     replaceable FuelPump fuelPump;
     replaceable FuelTank fuelTank;
     
+  initial equation
+    position.x = x;
+    position.y = y;
+    velocity.x = 0;
+    velocity.y = 0;
+  
   equation
     mass = thruster.mass + fuelPump.mass + fuelTank.mass;
     
@@ -45,6 +52,7 @@ package DogfightComponents
     connect(controller.thrust, thruster.control);
     connect(thruster.fuelRateControl, fuelPump.control);
     connect(fuelPump.fuelLevel, fuelTank.fuelLevel);
+    connect(fuelPump.fuelRate, fuelTank.fuelRate);
     connect(fuelPump.fuelRate, thruster.fuelRate);
     connect(thruster.thrust, thrust);
     
@@ -64,13 +72,13 @@ package DogfightComponents
     
   equation
     e = der(I);
-    u = Kp * e + Ki * I;
+    u = Kp * e; // + Ki * I;
     
   end PIController;
   
   
   
-  model Controller
+  block Controller
     
     input VectorIO position;
     input VectorIO target;
@@ -83,10 +91,10 @@ package DogfightComponents
     Vector pError;
     Vector vError;
     
-    PIController pControl_x;
-    PIController pControl_y;
-    PIController vControl_x;
-    PIController vControl_y;
+    PIController pControl_x ( Kp = 0.05, Ki = 0.0003 );
+    PIController pControl_y ( Kp = 0.05, Ki = 0.0003 );
+    PIController vControl_x ( Kp = 0.5, Ki = 0.1 );
+    PIController vControl_y ( Kp = 0.5, Ki = 0.1 );
   
   equation
     velocity.x = der(position.x);
@@ -111,7 +119,7 @@ package DogfightComponents
   
   
   
-  model Thruster
+  block Thruster
   
     parameter Real mass = 70;
     parameter Real T = 2;
@@ -119,26 +127,29 @@ package DogfightComponents
     parameter Real n = 4;
     parameter Real maxFuelRate = 3.6;
     
-    
     input VectorIO control;
-    output VectorIO thrust;
-    Modelica.Blocks.Interfaces.RealOutput controlDir;
-    Modelica.Blocks.Interfaces.RealInput thrustDir;
-    output RealIO controlMag;
-    Real thrustMag;
-    output RealIO fuelRateControl;
+    input Modelica.Blocks.Interfaces.RealInput thrustDir;
     input RealIO fuelRate;
+    output RealIO controlMag;
+    output RealIO fuelRateControl;
+    output VectorIO thrust;
+    output Modelica.Blocks.Interfaces.RealOutput controlDir ( start = 0 );
     
+  protected
+    Real thrustMag;
     Modelica.Blocks.Continuous.TransferFunction directionLag( b = {1}, a = {T, 1} );
-    
+  
+  initial equation
+    controlDir = directionLag.y;
+  
   equation
-    controlDir = atan2(control.y, control.x);
+    controlDir = Modelica.Math.atan3(control.y, control.x, controlDir);
     controlMag = sqrt(control.x^2 + control.y^2);
     thrust.x = thrustMag * cos(thrustDir);
     thrust.y = thrustMag * sin(thrustDir);
     
-    fuelRateControl = if -n*log(1 - controlMag/k) < maxFuelRate then -n*log(1 - controlMag/k) else maxFuelRate;
-    thrustMag = k*(1 - exp(-fuelRate/n));
+    fuelRateControl = if -n*log(1 - controlMag/K) < maxFuelRate then -n*log(1 - controlMag/K) else maxFuelRate;
+    thrustMag = K*(1 - exp(-fuelRate/n));
     
     connect(controlDir, directionLag.u);
     connect(thrustDir, directionLag.y);
@@ -146,7 +157,7 @@ package DogfightComponents
   
   
   
-  model FuelPump
+  block FuelPump
   
     parameter Real mass = 5;
     parameter Real maxDP = 15;
@@ -156,11 +167,12 @@ package DogfightComponents
     parameter Real rho = 1000;
     
     input RealIO control;
-    output RealIO fuelRate;
-    Modelica.Blocks.Interfaces.RealOutput controlDP;
-    Modelica.Blocks.Interfaces.RealInput dP;
     input RealIO fuelLevel;
-    
+    input Modelica.Blocks.Interfaces.RealInput dP;
+    output RealIO fuelRate;
+    output Modelica.Blocks.Interfaces.RealOutput controlDP;
+
+  protected
     Modelica.Blocks.Continuous.TransferFunction pumpLag( b = {1}, a = {T, 1} );
     
   equation
@@ -174,15 +186,15 @@ package DogfightComponents
   
   
   
-  model FuelTank
+  block FuelTank
     
     parameter Real tare = 25;
     parameter Real capacity = 4000;
-    
-    Real mass;
-    RealIO fuelLevel;
+
     input RealIO fuelRate;
-    
+    output RealIO fuelLevel;
+    output Real mass;
+
   initial equation
     fuelLevel = capacity;
   
@@ -191,6 +203,25 @@ package DogfightComponents
     fuelRate = -der(fuelLevel);
     
   end FuelTank;
+  
+  
+  
+  model Target
+  
+    parameter Real x = 0;
+    parameter Real y = 0;
+  
+    VectorIO position;
+    
+  initial equation
+    position.x = y;
+    position.y = y;
+    
+  equation
+    der(position.x) = sin(time / 100) * 10;
+    der(position.y) = cos(time / 100) * 10;
+    
+  end Target;
   
   
   
