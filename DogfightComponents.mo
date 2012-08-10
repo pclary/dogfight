@@ -2,7 +2,7 @@ package DogfightComponents
 
 
 
-  connector RealIO = Real u;
+  connector RealIO = Real;
 
   connector VectorIO
     Real x;
@@ -15,12 +15,6 @@ package DogfightComponents
     Real x;
     Real y;
   end Vector;
-  
-  
-  
-  partial model Component
-    Real mass;
-  end Component;
   
   
   
@@ -38,7 +32,7 @@ package DogfightComponents
     replaceable FuelTank fuelTank;
     
   equation
-    mass = controller.mass + thruster.mass + fuelPump.mass + fuelTank.mass;
+    mass = thruster.mass + fuelPump.mass + fuelTank.mass;
     
     der(position.x) = velocity.x;
     der(position.y) = velocity.y;
@@ -48,6 +42,11 @@ package DogfightComponents
     connect(position, controller.position);
     connect(target, controller.target);
     connect(mass, controller.vehicleMass);
+    connect(controller.thrust, thruster.control);
+    connect(thruster.fuelRateControl, fuelPump.control);
+    connect(fuelPump.fuelLevel, fuelTank.fuelLevel);
+    connect(fuelPump.fuelRate, thruster.fuelRate);
+    connect(thruster.thrust, thrust);
     
   end Vehicle;
   
@@ -72,7 +71,6 @@ package DogfightComponents
   
   
   model Controller
-    extends Component;
     
     input VectorIO position;
     input VectorIO target;
@@ -108,19 +106,91 @@ package DogfightComponents
     
     thrust.x = vControl_x.u * vehicleMass;
     thrust.y = vControl_y.u * vehicleMass;
-    
-    mass = 0;
   
   end Controller;
   
   
   
-  class Thruster
-    extends Component;
+  model Thruster
+  
+    parameter Real mass = 70;
+    parameter Real T = 2;
+    parameter Real K = 23000;
+    parameter Real n = 4;
+    parameter Real maxFuelRate = 3.6;
     
     
+    input VectorIO control;
+    output VectorIO thrust;
+    Modelica.Blocks.Interfaces.RealOutput controlDir;
+    Modelica.Blocks.Interfaces.RealInput thrustDir;
+    output RealIO controlMag;
+    Real thrustMag;
+    output RealIO fuelRateControl;
+    input RealIO fuelRate;
     
+    Modelica.Blocks.Continuous.TransferFunction directionLag( b = {1}, a = {T, 1} );
+    
+  equation
+    controlDir = atan2(control.y, control.x);
+    controlMag = sqrt(control.x^2 + control.y^2);
+    thrust.x = thrustMag * cos(thrustDir);
+    thrust.y = thrustMag * sin(thrustDir);
+    
+    fuelRateControl = if -n*log(1 - controlMag/k) < maxFuelRate then -n*log(1 - controlMag/k) else maxFuelRate;
+    thrustMag = k*(1 - exp(-fuelRate/n));
+    
+    connect(controlDir, directionLag.u);
+    connect(thrustDir, directionLag.y);
   end Thruster;
+  
+  
+  
+  model FuelPump
+  
+    parameter Real mass = 5;
+    parameter Real maxDP = 15;
+    parameter Real A = 0.1;
+    parameter Real T = 5;
+    parameter Real C = 1;
+    parameter Real rho = 1000;
+    
+    input RealIO control;
+    output RealIO fuelRate;
+    Modelica.Blocks.Interfaces.RealOutput controlDP;
+    Modelica.Blocks.Interfaces.RealInput dP;
+    input RealIO fuelLevel;
+    
+    Modelica.Blocks.Continuous.TransferFunction pumpLag( b = {1}, a = {T, 1} );
+    
+  equation
+    controlDP = if fuelLevel > 0 then if (control / (C*A))^2 / (2*rho) < maxDP then (control / (C*A))^2 / (2*rho) else maxDP else 0;
+    fuelRate = C*A*sqrt(2*rho*dP);
+    
+    connect(controlDP, pumpLag.u);
+    connect(dP, pumpLag.y);
+
+  end FuelPump;
+  
+  
+  
+  model FuelTank
+    
+    parameter Real tare = 25;
+    parameter Real capacity = 4000;
+    
+    Real mass;
+    RealIO fuelLevel;
+    input RealIO fuelRate;
+    
+  initial equation
+    fuelLevel = capacity;
+  
+  equation
+    mass = tare + fuelLevel;
+    fuelRate = -der(fuelLevel);
+    
+  end FuelTank;
   
   
   
