@@ -28,9 +28,9 @@ package DogfightComponents
     input VectorIO thrust;
     
     replaceable Controller controller;
-    replaceable Thruster thruster;
-    replaceable FuelPump fuelPump;
-    replaceable FuelTank fuelTank;
+    replaceable Thruster thruster ( mass = 100, T = 2.2, K = 32000, n = 6, maxFuelRate = 7.6 );
+    replaceable FuelPump fuelPump ( mass = 2, maxDP = 5, A = 0.08, T = 3 );
+    replaceable FuelTank fuelTank ( tare = 10, capacity = 1000 );
     
   initial equation
     position.x = x;
@@ -91,10 +91,10 @@ package DogfightComponents
     Vector pError;
     Vector vError;
     
-    PIController pControl_x ( Kp = 0.05, Ki = 0.0003 );
-    PIController pControl_y ( Kp = 0.05, Ki = 0.0003 );
-    PIController vControl_x ( Kp = 0.5, Ki = 0.1 );
-    PIController vControl_y ( Kp = 0.5, Ki = 0.1 );
+    PIController pControl_x ( Kp = 0.05, Ki = 0.003 );
+    PIController pControl_y ( Kp = 0.05, Ki = 0.003 );
+    PIController vControl_x ( Kp = 0.5, Ki = 0.01 );
+    PIController vControl_y ( Kp = 0.5, Ki = 0.01 );
   
   equation
     velocity.x = der(position.x);
@@ -110,7 +110,7 @@ package DogfightComponents
     pControl_x.e = pError.x;
     pControl_y.e = pError.y;
     vControl_x.e = vError.x + pControl_x.u;
-    vControl_y.e = vError.y + pControl_x.u;
+    vControl_y.e = vError.y + pControl_y.u;
     
     thrust.x = vControl_x.u * vehicleMass;
     thrust.y = vControl_y.u * vehicleMass;
