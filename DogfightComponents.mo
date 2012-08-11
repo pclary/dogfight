@@ -41,9 +41,9 @@ package DogfightComponents
     connect(mass, controller.vehicleMass);
     connect(controller.thrust, thruster.control);
     connect(thruster.fuelRateControl, fuelPump.control);
-    connect(fuelPump.fuelLevel, fuelTank.fuelLevel);
-    connect(fuelPump.fuelRate, fuelTank.fuelRate);
-    connect(fuelPump.fuelRate, thruster.fuelRate);
+    connect(fuelPump.tankControl, fuelTank.control);
+    connect(fuelTank.fuelRate, fuelPump.fuelRateIn);
+    connect(fuelPump.fuelRateOut, thruster.fuelRate);
     connect(thruster.thrust, thrust);
     
   end Vehicle;
@@ -66,18 +66,18 @@ package DogfightComponents
     Modelica.Blocks.Math.Product[2] accel2thrust; 
     
   equation
-    connect(position[:], pControl[:].u_m);
-    connect(target[:], pControl[:].u_s);
-    connect(position[:], velocity[:].u);
-    connect(target[:], targetVelocity[:].u);
-    connect(targetVelocity[:].y, controlVelocity[:].u1);
-    connect(pControl[:].y, controlVelocity[:].u2);
-    connect(velocity[:].y, vControl[:].u_m);
-    connect(controlVelocity[:].y, vControl[:].u_s);
-    connect(vControl[:].y, accel2thrust[:].u1);
+    connect(position, pControl.u_m);
+    connect(target, pControl.u_s);
+    connect(position, velocity.u);
+    connect(target, targetVelocity.u);
+    connect(targetVelocity.y, controlVelocity.u1);
+    connect(pControl.y, controlVelocity.u2);
+    connect(velocity.y, vControl.u_m);
+    connect(controlVelocity.y, vControl.u_s);
+    connect(vControl.y, accel2thrust.u1);
     connect(vehicleMass, accel2thrust[1].u2);
     connect(vehicleMass, accel2thrust[2].u2);
-    connect(accel2thrust[:].y, thrust[:]);
+    connect(accel2thrust.y, thrust);
   
   end Controller;
   
@@ -131,20 +131,20 @@ package DogfightComponents
     parameter Real rho = 1000;
     
     RealInput control;
-    RealInput fuelLevel;
-    input Modelica.Blocks.Interfaces.RealInput dP;
-    RealOutput fuelRate;
-    output Modelica.Blocks.Interfaces.RealOutput controlDP;
+    RealInput fuelRateIn;
+    RealOutput tankControl;
+    RealOutput fuelRateOut;
 
   protected
+    Real dP;
     Modelica.Blocks.Continuous.TransferFunction pumpLag( b = {1}, a = {T, 1} );
     
   equation
-    controlDP = if fuelLevel > 0 then if (control / (C*A))^2 / (2*rho) < maxDP then (control / (C*A))^2 / (2*rho) else maxDP else 0;
-    fuelRate = C*A*sqrt(2*rho*dP);
+    dP = (control / (C*A))^2 / (2*rho);
+    tankControl = if dP < maxDP then C*A*sqrt(2*rho*dP) else C*A*sqrt(2*rho*maxDP);
     
-    connect(controlDP, pumpLag.u);
-    connect(dP, pumpLag.y);
+    connect(fuelRateIn, pumpLag.u);
+    connect(pumpLag.y, fuelRateOut);
 
   end FuelPump;
   
@@ -155,21 +155,21 @@ package DogfightComponents
     parameter Real tare = 25;
     parameter Real capacity = 4000;
 
-    RealInput fuelRate;
-    RealOutput fuelLevel;
-    output Real mass;
+    RealInput control;
+    RealOutput fuelRate;
+    RealOutput mass;
+    
+  protected
+    Real fuelLevel;
 
   initial equation
     fuelLevel = capacity;
   
   equation
+    fuelRate = if fuelLevel > 0 then control else 0;
     mass = tare + fuelLevel;
     fuelRate = -der(fuelLevel);
-    
-    when fuelLevel < 0 then
-      reinit(fuelLevel, 0);
-    end when;
-    
+
   end FuelTank;
   
   
