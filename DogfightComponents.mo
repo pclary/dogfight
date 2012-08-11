@@ -2,17 +2,9 @@ package DogfightComponents
 
 
 
-  connector RealIO = Real;
-
-  connector VectorIO
-    Real x;
-    Real y;
-  end VectorIO;
-  
-  record Vector
-    Real x;
-    Real y;
-  end Vector;
+  connector RealInOut = Real;
+  import Modelica.Blocks.Interfaces.RealInput;
+  import Modelica.Blocks.Interfaces.RealOutput;
   
   
   
@@ -21,11 +13,11 @@ package DogfightComponents
     parameter Real x = 0;
     parameter Real y = 0;
   
-    RealIO mass;
-    VectorIO position;
-    VectorIO target;
-    Vector velocity;
-    input VectorIO thrust;
+    RealOutput mass;
+    RealOutput[2] position;
+    RealInOut[2] target;
+    Real[2] velocity;
+    RealInput[2] thrust;
     
     replaceable Controller controller;
     replaceable Thruster thruster ( mass = 100, T = 2.2, K = 32000, n = 6, maxFuelRate = 7.6 );
@@ -33,18 +25,16 @@ package DogfightComponents
     replaceable FuelTank fuelTank ( tare = 10, capacity = 1000 );
     
   initial equation
-    position.x = x;
-    position.y = y;
-    velocity.x = 0;
-    velocity.y = 0;
+    position[1] = x;
+    position[2] = y;
+    velocity[1] = 0;
+    velocity[2] = 0;
   
   equation
     mass = thruster.mass + fuelPump.mass + fuelTank.mass;
     
-    der(position.x) = velocity.x;
-    der(position.y) = velocity.y;
-    der(velocity.x) = thrust.x / mass;
-    der(velocity.y) = thrust.y / mass;
+    der(position) = velocity;
+    der(velocity) = thrust / mass;
     
     connect(position, controller.position);
     connect(target, controller.target);
@@ -59,61 +49,35 @@ package DogfightComponents
   end Vehicle;
   
   
-
-  block PIController
-  
-    parameter Real Kp = 1;
-    parameter Real Ki = 1;
-    input Real e;
-    output Real u;
-    
-  protected
-    Real I;
-    
-  equation
-    e = der(I);
-    u = Kp * e; // + Ki * I;
-    
-  end PIController;
-  
-  
   
   block Controller
     
-    input VectorIO position;
-    input VectorIO target;
-    input RealIO vehicleMass;
-    output VectorIO thrust;
+    RealInOut[2] position;
+    RealInOut[2] target;
+    RealInOut vehicleMass;
+    RealOutput[2] thrust;
     
   protected
-    Vector velocity;
-    Vector targetVelocity;
-    Vector pError;
-    Vector vError;
+    Modelica.Blocks.Continuous.LimPID[2] pControl ( k = 0.05, Ti = 0.1, yMax = Modelica.Constants.inf, initType = Modelica.Blocks.Types.InitPID.SteadyState, limitsAtInit = false, controllerType = Modelica.Blocks.Types.SimpleController.P );
+    Modelica.Blocks.Continuous.LimPID[2] vControl ( k = 0.1, Ti = 0.1, yMax = Modelica.Constants.inf, initType = Modelica.Blocks.Types.InitPID.SteadyState, limitsAtInit = false, controllerType = Modelica.Blocks.Types.SimpleController.P );
+    Modelica.Blocks.Continuous.Der[2] velocity;
+    Modelica.Blocks.Continuous.Der[2] targetVelocity;
+    Modelica.Blocks.Math.Add[2] controlVelocity;
+    Modelica.Blocks.Math.Product[2] accel2thrust; 
     
-    PIController pControl_x ( Kp = 0.05, Ki = 0.003 );
-    PIController pControl_y ( Kp = 0.05, Ki = 0.003 );
-    PIController vControl_x ( Kp = 0.1, Ki = 0.01 );
-    PIController vControl_y ( Kp = 0.1, Ki = 0.01 );
-  
   equation
-    velocity.x = der(position.x);
-    velocity.y = der(position.y);
-    targetVelocity.x = der(target.x);
-    targetVelocity.y = der(target.y);
-    
-    pError.x = target.x - position.x;
-    pError.y = target.y - position.y;
-    vError.x = targetVelocity.x - velocity.x;
-    vError.y = targetVelocity.y - velocity.y;
-    
-    pControl_x.e = pError.x;
-    pControl_y.e = pError.y;
-    vControl_x.e = vError.x + pControl_x.u;
-    vControl_y.e = vError.y + pControl_y.u;
-    
-    thrust.x = vControl_x.u * vehicleMass;
-    thrust.y = vControl_y.u * vehicleMass;
+    connect(position[:], pControl[:].u_m);
+    connect(target[:], pControl[:].u_s);
+    connect(position[:], velocity[:].u);
+    connect(target[:], targetVelocity[:].u);
+    connect(targetVelocity[:].y, controlVelocity[:].u1);
+    connect(pControl[:].y, controlVelocity[:].u2);
+    connect(velocity[:].y, vControl[:].u_m);
+    connect(controlVelocity[:].y, vControl[:].u_s);
+    connect(vControl[:].y, accel2thrust[:].u1);
+    connect(vehicleMass, accel2thrust[1].u2);
+    connect(vehicleMass, accel2thrust[2].u2);
+    connect(accel2thrust[:].y, thrust[:]);
   
   end Controller;
   
@@ -127,12 +91,12 @@ package DogfightComponents
     parameter Real n = 4;
     parameter Real maxFuelRate = 3.6;
     
-    input VectorIO control;
+    RealInput[2] control;
     input Modelica.Blocks.Interfaces.RealInput thrustDir;
-    input RealIO fuelRate;
-    output RealIO controlMag;
-    output RealIO fuelRateControl;
-    output VectorIO thrust;
+    RealInput fuelRate;
+    RealOutput controlMag;
+    RealOutput fuelRateControl;
+    RealOutput[2] thrust;
     output Modelica.Blocks.Interfaces.RealOutput controlDir ( start = 0 );
     
   protected
@@ -143,10 +107,10 @@ package DogfightComponents
     controlDir = directionLag.y;
   
   equation
-    controlDir = Modelica.Math.atan3(control.y, control.x, controlDir);
-    controlMag = sqrt(control.x^2 + control.y^2);
-    thrust.x = thrustMag * cos(thrustDir);
-    thrust.y = thrustMag * sin(thrustDir);
+    controlDir = Modelica.Math.atan3(control[2], control[1], controlDir);
+    controlMag = sqrt(control[1]^2 + control[2]^2);
+    thrust[1] = thrustMag * cos(thrustDir);
+    thrust[2] = thrustMag * sin(thrustDir);
     
     fuelRateControl = if -n*log(1 - controlMag/K) < maxFuelRate then -n*log(1 - controlMag/K) else maxFuelRate;
     thrustMag = K*(1 - exp(-fuelRate/n));
@@ -166,10 +130,10 @@ package DogfightComponents
     parameter Real C = 1;
     parameter Real rho = 1000;
     
-    input RealIO control;
-    input RealIO fuelLevel;
+    RealInput control;
+    RealInput fuelLevel;
     input Modelica.Blocks.Interfaces.RealInput dP;
-    output RealIO fuelRate;
+    RealOutput fuelRate;
     output Modelica.Blocks.Interfaces.RealOutput controlDP;
 
   protected
@@ -191,8 +155,8 @@ package DogfightComponents
     parameter Real tare = 25;
     parameter Real capacity = 4000;
 
-    input RealIO fuelRate;
-    output RealIO fuelLevel;
+    RealInput fuelRate;
+    RealOutput fuelLevel;
     output Real mass;
 
   initial equation
@@ -215,15 +179,17 @@ package DogfightComponents
     parameter Real x = 0;
     parameter Real y = 0;
   
-    VectorIO position;
+    RealOutput[2] position;
+    Real[2] velocity;
     
   initial equation
-    position.x = y;
-    position.y = y;
+    position[1] = x;
+    position[2] = y;
     
   equation
-    der(position.x) = sin(time / 20) * 10;
-    der(position.y) = cos(time / 20) * 10;
+    velocity = der(position);
+    velocity[1] = sin(time / 20) * 10;
+    velocity[2] = cos(time / 20) * 10;
     
   end Target;
   
