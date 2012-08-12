@@ -1,8 +1,5 @@
 package DogfightComponents
 
-
-
-  connector RealInOut = Real;
   import Modelica.Blocks.Interfaces.RealInput;
   import Modelica.Blocks.Interfaces.RealOutput;
   
@@ -15,7 +12,7 @@ package DogfightComponents
   
     RealOutput mass;
     RealOutput[2] position;
-    RealInOut[2] target;
+    RealInput[2] target;
     Real[2] velocity;
     RealInput[2] thrust;
     
@@ -50,16 +47,41 @@ package DogfightComponents
   
   
   
+  block PIController
+  
+    parameter Real Kp = 1;
+    parameter Real Ki = 1;
+    parameter Real ILim = Modelica.Constants.inf;
+    RealInput u_s;
+    RealInput u_m;
+    RealOutput y;
+    
+  protected
+    Real e;
+    Real I;
+  
+  initial equation
+    I = 0;
+  
+  equation
+    e = u_s - u_m;
+    der(I) = if I < -ILim and e < 0 or I > ILim and e > 0 then 0 else e;
+    y = Kp * e + Ki * I;
+    
+  end PIController;
+
+  
+  
   block Controller
     
-    RealInOut[2] position;
-    RealInOut[2] target;
-    RealInOut vehicleMass;
+    RealInput[2] position;
+    RealInput[2] target;
+    RealInput vehicleMass;
     RealOutput[2] thrust;
     
   protected
-    Modelica.Blocks.Continuous.LimPID[2] pControl ( k = 0.05, Ti = 0.1, yMax = Modelica.Constants.inf, initType = Modelica.Blocks.Types.InitPID.SteadyState, limitsAtInit = false, controllerType = Modelica.Blocks.Types.SimpleController.P );
-    Modelica.Blocks.Continuous.LimPID[2] vControl ( k = 0.1, Ti = 0.1, yMax = Modelica.Constants.inf, initType = Modelica.Blocks.Types.InitPID.SteadyState, limitsAtInit = false, controllerType = Modelica.Blocks.Types.SimpleController.P );
+    PIController[2] pControl ( Kp = 0.09, Ki = 0.0 );
+    PIController[2] vControl ( Kp = 0.18, Ki = 0.02, ILim = 80 );
     Modelica.Blocks.Continuous.Der[2] velocity;
     Modelica.Blocks.Continuous.Der[2] targetVelocity;
     Modelica.Blocks.Math.Add[2] controlVelocity;
@@ -83,6 +105,27 @@ package DogfightComponents
   
   
   
+  block EscapeController
+    
+    parameter Real maxThrust = 32000;
+    
+    RealInput[2] position;
+    RealInput[2] target;
+    RealInput vehicleMass;
+    RealOutput[2] thrust;
+    
+  protected
+    Real direction;
+    
+  equation
+    direction = atan2(position[2] - target[2], position[1] - target[1]);
+    thrust[1] = cos(direction) * maxThrust;
+    thrust[2] = sin(direction) * maxThrust;
+  
+  end EscapeController;
+  
+  
+  
   block Thruster
   
     parameter Real mass = 70;
@@ -92,12 +135,12 @@ package DogfightComponents
     parameter Real maxFuelRate = 3.6;
     
     RealInput[2] control;
-    input Modelica.Blocks.Interfaces.RealInput thrustDir;
+    RealInput thrustDir;
     RealInput fuelRate;
     RealOutput controlMag;
     RealOutput fuelRateControl;
     RealOutput[2] thrust;
-    output Modelica.Blocks.Interfaces.RealOutput controlDir ( start = 0 );
+    RealOutput controlDir ( start = 0 );
     
   protected
     Real thrustMag;
@@ -178,7 +221,8 @@ package DogfightComponents
   
     parameter Real x = 0;
     parameter Real y = 0;
-  
+    
+    RealInput[2] target;
     RealOutput[2] position;
     Real[2] velocity;
     
