@@ -22,10 +22,8 @@ package DogfightComponents
     replaceable FuelTank fuelTank ( tare = 10, capacity = 1000 );
     
   initial equation
-    position[1] = x;
-    position[2] = y;
-    velocity[1] = 0;
-    velocity[2] = 0;
+    position = {x, y};
+    velocity = {0, 0};
   
   equation
     mass = thruster.mass + fuelPump.mass + fuelTank.mass;
@@ -74,19 +72,27 @@ package DogfightComponents
   
   block Controller
     
+    parameter Real Kp_p = 0.09;
+    parameter Real Ki_p = 0;
+    parameter Real Kp_v = 0.18;
+    parameter Real Ki_v = 0.02;
+    
     RealInput[2] position;
     RealInput[2] target;
     RealInput vehicleMass;
     RealOutput[2] thrust;
     
   protected
-    PIController[2] pControl ( Kp = 0.09, Ki = 0.0 );
-    PIController[2] vControl ( Kp = 0.18, Ki = 0.02, ILim = 80 );
+    PIController[2] pControl ( Kp = Kp_p, Ki = Ki_p );
+    PIController[2] vControl ( Kp = Kp_v, Ki = Ki_v, ILim = 80 );
     Modelica.Blocks.Continuous.Der[2] velocity;
     Modelica.Blocks.Continuous.Der[2] targetVelocity;
     Modelica.Blocks.Math.Add[2] controlVelocity;
     Modelica.Blocks.Math.Product[2] accel2thrust; 
-    
+  
+  initial equation
+    thrust = {0, 0};
+  
   equation
     connect(position, pControl.u_m);
     connect(target, pControl.u_s);
@@ -99,7 +105,7 @@ package DogfightComponents
     connect(vControl.y, accel2thrust.u1);
     connect(vehicleMass, accel2thrust[1].u2);
     connect(vehicleMass, accel2thrust[2].u2);
-    connect(accel2thrust.y, thrust);
+    thrust = if time > 0 then accel2thrust.y else {0, 0};
   
   end Controller;
   
@@ -116,13 +122,34 @@ package DogfightComponents
     
   protected
     Real direction;
-    
+  
+  initial equation
+    thrust = {0, 0};
+  
   equation
     direction = atan2(position[2] - target[2], position[1] - target[1]);
-    thrust[1] = cos(direction) * maxThrust;
-    thrust[2] = sin(direction) * maxThrust;
+    thrust[1] = if time > 0 then cos(direction) * maxThrust else 0;
+    thrust[2] = if time > 0 then sin(direction) * maxThrust else 0;
   
   end EscapeController;
+  
+  
+  
+  block DebugController
+    
+    RealInput[2] position;
+    RealInput[2] target;
+    RealInput vehicleMass;
+    RealOutput[2] thrust;
+    
+  initial equation
+    thrust = {0, 0};
+    
+  equation
+    thrust = target - position;
+    //thrust = if time > 0 then target - position else {0, 0};
+  
+  end DebugController;
   
   
   
@@ -140,14 +167,15 @@ package DogfightComponents
     RealOutput controlMag;
     RealOutput fuelRateControl;
     RealOutput[2] thrust;
-    RealOutput controlDir ( start = 0 );
+    RealOutput controlDir;
     
   protected
     Real thrustMag;
     Modelica.Blocks.Continuous.TransferFunction directionLag( b = {1}, a = {T, 1} );
   
   initial equation
-    controlDir = directionLag.y;
+    thrustMag = 0;
+    thrustDir = 0;
   
   equation
     controlDir = Modelica.Math.atan3(control[2], control[1], controlDir);
@@ -182,6 +210,11 @@ package DogfightComponents
     Real dP;
     Modelica.Blocks.Continuous.TransferFunction pumpLag( b = {1}, a = {T, 1} );
     
+  initial equation
+    dP = 0;
+    fuelRateIn = 0;
+    fuelRateOut = 0;
+    
   equation
     dP = (control / (C*A))^2 / (2*rho);
     tankControl = if dP < maxDP then C*A*sqrt(2*rho*dP) else C*A*sqrt(2*rho*maxDP);
@@ -207,6 +240,7 @@ package DogfightComponents
 
   initial equation
     fuelLevel = capacity;
+    fuelRate = 0;
   
   equation
     fuelRate = if fuelLevel > 0 then control else 0;
